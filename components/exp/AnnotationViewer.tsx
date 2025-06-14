@@ -7,7 +7,7 @@ const AnnotationViewer = () => {
   const text =
     "The dump truck was inspected and it was found that it had a blown head gasket";
 
-  // Entity definitions with character offsets - now with overlapping entities
+  // Entity definitions with character offsets - now with overlapping entities and long labels
   const entities = [
     {
       id: "T1",
@@ -19,7 +19,7 @@ const AnnotationViewer = () => {
     },
     {
       id: "T1.1",
-      type: "Object",
+      type: "mechanicalfasteningobject", // Long label example
       start: 9,
       end: 14,
       text: "truck",
@@ -35,7 +35,7 @@ const AnnotationViewer = () => {
     },
     {
       id: "T3",
-      type: "State",
+      type: "verylongstatename", // Another long label
       start: 60,
       end: 65,
       text: "blown",
@@ -54,9 +54,10 @@ const AnnotationViewer = () => {
   // Relation definitions
   const relations = [
     { id: "R1", type: "hasPart", arg1: "T1", arg2: "T4", color: "#333" },
-    { id: 'R2', type: 'hasState', arg1: 'T4', arg2: 'T3', color: '#333' },
+    { id: "R2", type: "hasState", arg1: "T4", arg2: "T3", color: "#333" },
     { id: "R3", type: "hasParticipant", arg1: "T2", arg2: "T4", color: "#333" },
     { id: "R4", type: "isA", arg1: "T1", arg2: "T1.1", color: "#333" },
+    { id: "R5", type: "relatedTo", arg1: "T1", arg2: "T4", color: "#333" },
   ];
 
   // Constants for layout
@@ -67,96 +68,124 @@ const AnnotationViewer = () => {
   const arcSpacing = 25;
   const entityBoxHeight = 20;
   const entityLayerSpacing = 22;
+  const labelFontSize = 10;
+
+  // Helper function to truncate text with ellipsis based on available width
+  const truncateLabel = (label, maxWidth) => {
+    const avgCharWidth = labelFontSize * 0.6;
+    const maxChars = Math.floor(maxWidth / avgCharWidth) - 1; // -1 for ellipsis
+
+    if (label.length * avgCharWidth <= maxWidth) {
+      return label;
+    }
+
+    if (maxChars <= 3) {
+      return "...";
+    }
+
+    return label.substring(0, maxChars - 3) + "...";
+  };
 
   // Calculate minimum required width to prevent entity breaking
   const minRequiredWidth = useMemo(() => {
-    const widestEntityWidth = Math.max(...entities.map(e => e.text.length * charWidth));
-    return widestEntityWidth + (2 * padding) + 50;
+    const widestEntityWidth = Math.max(
+      ...entities.map((e) => e.text.length * charWidth)
+    );
+    return widestEntityWidth + 2 * padding + 50;
   }, [entities, charWidth, padding]);
 
   // Create text chunks that handle overlapping entities while preserving no-break principle
   const textChunks = useMemo(() => {
     const chunks = [];
     let currentPos = 0;
-    
+
     // Find all breakpoints (entity start/end positions)
     const breakpoints = new Set([0, text.length]);
-    entities.forEach(entity => {
+    entities.forEach((entity) => {
       breakpoints.add(entity.start);
       breakpoints.add(entity.end);
     });
     const sortedBreakpoints = Array.from(breakpoints).sort((a, b) => a - b);
-    
+
     // Process each segment between breakpoints
     for (let i = 0; i < sortedBreakpoints.length - 1; i++) {
       const segmentStart = sortedBreakpoints[i];
       const segmentEnd = sortedBreakpoints[i + 1];
       const segmentText = text.slice(segmentStart, segmentEnd);
-      
+
       // Skip empty segments
       if (segmentText.trim().length === 0) {
         continue;
       }
-      
+
       // Find all entities that completely contain this segment
-      const containingEntities = entities.filter(entity => 
-        entity.start <= segmentStart && entity.end >= segmentEnd
+      const containingEntities = entities.filter(
+        (entity) => entity.start <= segmentStart && entity.end >= segmentEnd
       );
-      
+
       // Find entities that exactly match this segment (for proper entity chunks)
-      const exactMatchEntities = entities.filter(entity =>
-        entity.start === segmentStart && entity.end === segmentEnd
+      const exactMatchEntities = entities.filter(
+        (entity) => entity.start === segmentStart && entity.end === segmentEnd
       );
-      
+
       if (exactMatchEntities.length > 0) {
         // This segment exactly matches one or more entities - create entity chunk
         chunks.push({
-          type: 'entity',
+          type: "entity",
           text: segmentText,
           start: segmentStart,
           end: segmentEnd,
-          entities: containingEntities.length > 0 ? containingEntities : exactMatchEntities,
-          entity: exactMatchEntities[0] // Primary entity for this chunk
+          entities:
+            containingEntities.length > 0
+              ? containingEntities
+              : exactMatchEntities,
+          entity: exactMatchEntities[0], // Primary entity for this chunk
         });
       } else if (containingEntities.length > 0) {
         // This segment is contained within entities but doesn't match exactly
         // Split into words but mark them as part of entities
-        const words = segmentText.trim().split(/\s+/).filter(word => word.length > 0);
+        const words = segmentText
+          .trim()
+          .split(/\s+/)
+          .filter((word) => word.length > 0);
         let wordPos = segmentStart;
-        
-        words.forEach(word => {
+
+        words.forEach((word) => {
           // Find the actual position of this word in the segment
           const wordIndex = text.indexOf(word, wordPos);
           chunks.push({
-            type: 'entity',
+            type: "entity",
             text: word,
             start: wordIndex,
             end: wordIndex + word.length,
             entities: containingEntities,
-            entity: containingEntities[0]
+            entity: containingEntities[0],
           });
           wordPos = wordIndex + word.length;
         });
       } else {
         // Regular text - split into individual words
-        const words = segmentText.trim().split(/\s+/).filter(word => word.length > 0);
+        const words = segmentText
+          .trim()
+          .split(/\s+/)
+          .filter((word) => word.length > 0);
         let wordPos = segmentStart;
-        
-        words.forEach(word => {
+
+        words.forEach((word) => {
           const wordIndex = text.indexOf(word, wordPos);
           chunks.push({
-            type: 'word',
+            type: "word",
             text: word,
             start: wordIndex,
             end: wordIndex + word.length,
             entities: [],
-            entity: null
+            entity: null,
           });
           wordPos = wordIndex + word.length;
         });
       }
     }
-    
+
     return chunks;
   }, [entities, text]);
 
@@ -188,12 +217,14 @@ const AnnotationViewer = () => {
           y: 0,
           lineIndex: lines.length,
         });
-        currentLine = [{
-          ...chunk,
-          x: 0,
-          absoluteStart: chunk.start,
-          absoluteEnd: chunk.end,
-        }];
+        currentLine = [
+          {
+            ...chunk,
+            x: 0,
+            absoluteStart: chunk.start,
+            absoluteEnd: chunk.end,
+          },
+        ];
         currentX = chunkWidth + spaceWidth;
       }
     });
@@ -211,12 +242,12 @@ const AnnotationViewer = () => {
 
   // Calculate entity layers for each line to handle overlaps
   const entityLayers = useMemo(() => {
-    return textLayout.map(line => {
+    return textLayout.map((line) => {
       // Get all unique entities on this line
       const lineEntities = new Set();
-      line.chunks.forEach(chunk => {
+      line.chunks.forEach((chunk) => {
         if (chunk.entities && chunk.entities.length > 0) {
-          chunk.entities.forEach(entity => lineEntities.add(entity.id));
+          chunk.entities.forEach((entity) => lineEntities.add(entity.id));
         }
       });
 
@@ -224,24 +255,31 @@ const AnnotationViewer = () => {
       const layers = [];
       const entityToLayer = {};
 
-      Array.from(lineEntities).forEach(entityId => {
-        const entity = entities.find(e => e.id === entityId);
+      Array.from(lineEntities).forEach((entityId) => {
+        const entity = entities.find((e) => e.id === entityId);
         if (!entity) return;
 
         // Find entity spans on this line - collect all chunks that contain this entity
-        const entityChunks = line.chunks.filter(chunk => 
-          chunk.entities && chunk.entities.some(e => e.id === entityId)
+        const entityChunks = line.chunks.filter(
+          (chunk) =>
+            chunk.entities && chunk.entities.some((e) => e.id === entityId)
         );
-        
+
         if (entityChunks.length === 0) return;
 
         // Calculate the full span of this entity on this line
-        const entitySpans = [{
-          start: Math.min(...entityChunks.map(chunk => chunk.x)),
-          end: Math.max(...entityChunks.map(chunk => chunk.x + chunk.text.length * charWidth)),
-          entityId: entityId,
-          entity: entity
-        }];
+        const entitySpans = [
+          {
+            start: Math.min(...entityChunks.map((chunk) => chunk.x)),
+            end: Math.max(
+              ...entityChunks.map(
+                (chunk) => chunk.x + chunk.text.length * charWidth
+              )
+            ),
+            entityId: entityId,
+            entity: entity,
+          },
+        ];
 
         // Find a layer where this entity doesn't conflict
         let assignedLayer = -1;
@@ -252,7 +290,12 @@ const AnnotationViewer = () => {
           for (const span of entitySpans) {
             for (const existingItem of layer) {
               // Check if spans overlap
-              if (!(span.end <= existingItem.start || span.start >= existingItem.end)) {
+              if (
+                !(
+                  span.end <= existingItem.start ||
+                  span.start >= existingItem.end
+                )
+              ) {
                 conflicts = true;
                 break;
               }
@@ -273,7 +316,7 @@ const AnnotationViewer = () => {
         }
 
         // Add entity spans to the assigned layer
-        entitySpans.forEach(span => {
+        entitySpans.forEach((span) => {
           layers[assignedLayer].push(span);
         });
 
@@ -294,10 +337,17 @@ const AnnotationViewer = () => {
       for (let lineIndex = 0; lineIndex < textLayout.length; lineIndex++) {
         const line = textLayout[lineIndex];
 
-        for (let chunkIndex = 0; chunkIndex < line.chunks.length; chunkIndex++) {
+        for (
+          let chunkIndex = 0;
+          chunkIndex < line.chunks.length;
+          chunkIndex++
+        ) {
           const chunk = line.chunks[chunkIndex];
 
-          if (chunk.entities && chunk.entities.some(e => e.id === entity.id)) {
+          if (
+            chunk.entities &&
+            chunk.entities.some((e) => e.id === entity.id)
+          ) {
             entityLineMapping[entity.id] = lineIndex;
             break;
           }
@@ -332,10 +382,12 @@ const AnnotationViewer = () => {
     const lineSpacings = relationsPerLine.map((count, index) => {
       const layerInfo = entityLayers[index];
       const numLayers = layerInfo ? layerInfo.layers.length : 0;
-      const entityBoxesHeight = linesWithEntities.has(index) && numLayers > 0 ? 
-        numLayers * entityLayerSpacing + 4 : 0;
+      const entityBoxesHeight =
+        linesWithEntities.has(index) && numLayers > 0
+          ? numLayers * entityLayerSpacing + 4
+          : 0;
       const relationSpace = count > 0 ? count * 30 : 0;
-      
+
       if (!linesWithEntities.has(index) && count === 0) {
         return baseLineSpacing;
       }
@@ -374,29 +426,36 @@ const AnnotationViewer = () => {
       if (!layerInfo) return;
 
       // For each entity on this line
-      Object.entries(layerInfo.entityToLayer).forEach(([entityId, layerIndex]) => {
-        const entity = entities.find(e => e.id === entityId);
-        if (!entity) return;
+      Object.entries(layerInfo.entityToLayer).forEach(
+        ([entityId, layerIndex]) => {
+          const entity = entities.find((e) => e.id === entityId);
+          if (!entity) return;
 
-        // Find all chunks that contain this entity on this line
-        const entityChunks = line.chunks.filter(chunk => 
-          chunk.entities && chunk.entities.some(e => e.id === entityId)
-        );
-        
-        if (entityChunks.length > 0) {
-          // Calculate the span of this entity across all its chunks
-          const minX = Math.min(...entityChunks.map(chunk => chunk.x));
-          const maxX = Math.max(...entityChunks.map(chunk => chunk.x + chunk.text.length * charWidth));
-          
-          positions[entityId] = {
-            x: padding + minX,
-            y: padding + line.y,
-            width: maxX - minX,
-            lineIndex: lineIndex,
-            layerIndex: layerIndex,
-          };
+          // Find all chunks that contain this entity on this line
+          const entityChunks = line.chunks.filter(
+            (chunk) =>
+              chunk.entities && chunk.entities.some((e) => e.id === entityId)
+          );
+
+          if (entityChunks.length > 0) {
+            // Calculate the span of this entity across all its chunks
+            const minX = Math.min(...entityChunks.map((chunk) => chunk.x));
+            const maxX = Math.max(
+              ...entityChunks.map(
+                (chunk) => chunk.x + chunk.text.length * charWidth
+              )
+            );
+
+            positions[entityId] = {
+              x: padding + minX,
+              y: padding + line.y,
+              width: maxX - minX,
+              lineIndex: lineIndex,
+              layerIndex: layerIndex,
+            };
+          }
         }
-      });
+      );
     });
 
     return positions;
@@ -410,22 +469,34 @@ const AnnotationViewer = () => {
       connections[entity.id] = {
         outgoing: [],
         incoming: [],
+        allRelations: [], // New: all relations for this entity
       };
     });
 
     relations.forEach((relation, index) => {
       if (connections[relation.arg1]) {
-        connections[relation.arg1].outgoing.push({
+        const relationData = {
           ...relation,
           relationIndex: index,
-        });
+          direction: "outgoing",
+        };
+        connections[relation.arg1].outgoing.push(relationData);
+        connections[relation.arg1].allRelations.push(relationData);
       }
       if (connections[relation.arg2]) {
-        connections[relation.arg2].incoming.push({
+        const relationData = {
           ...relation,
           relationIndex: index,
-        });
+          direction: "incoming",
+        };
+        connections[relation.arg2].incoming.push(relationData);
+        connections[relation.arg2].allRelations.push(relationData);
       }
+    });
+
+    // Sort allRelations by relationIndex to ensure consistent ordering
+    Object.values(connections).forEach((conn) => {
+      conn.allRelations.sort((a, b) => a.relationIndex - b.relationIndex);
     });
 
     return connections;
@@ -440,12 +511,18 @@ const AnnotationViewer = () => {
     return padding * 2 + totalTextHeight + 50;
   }, [lineInfo, baseLineSpacing]);
 
-  // Render entity with layer support
+  // Render entity with layer support and truncated labels
   const renderEntity = (entity) => {
     const pos = entityPositions[entity.id];
     if (!pos) return null;
 
     const yOffset = pos.layerIndex * entityLayerSpacing;
+
+    // Calculate available width for the label (with some padding)
+    const labelPadding = 8;
+    const availableWidth = pos.width - labelPadding;
+    const truncatedLabel = truncateLabel(entity.type, availableWidth);
+    const isLabelTruncated = truncatedLabel !== entity.type;
 
     return (
       <g key={entity.id}>
@@ -462,16 +539,20 @@ const AnnotationViewer = () => {
           rx={2}
           ry={2}
         />
-        {/* Entity label within the box */}
+
+        {/* Entity label within the box with truncation */}
         <text
           x={pos.x + pos.width / 2}
           y={pos.y + lineHeight + 16 + yOffset}
           textAnchor="middle"
-          fontSize="10"
+          fontSize={labelFontSize}
           fill={entity.color}
           fontWeight="bold"
+          style={{ cursor: isLabelTruncated ? "help" : "default" }}
         >
-          {entity.type}
+          {truncatedLabel}
+          {/* Tooltip for full text when truncated */}
+          {isLabelTruncated && <title>{entity.type}</title>}
         </text>
       </g>
     );
@@ -488,33 +569,34 @@ const AnnotationViewer = () => {
     const sourceConnections = entityConnections[relation.arg1];
     const targetConnections = entityConnections[relation.arg2];
 
-    // Find this relation's index among source's outgoing relations
-    const sourceRelationIndex = sourceConnections.outgoing.findIndex(
+    // Find this relation's index among ALL relations for each entity
+    const sourceAllRelations = sourceConnections.allRelations;
+    const targetAllRelations = targetConnections.allRelations;
+
+    const sourceRelationIndex = sourceAllRelations.findIndex(
       (r) => r.id === relation.id
     );
-    const sourceRelationCount = sourceConnections.outgoing.length;
+    const sourceRelationCount = sourceAllRelations.length;
 
-    // Find this relation's index among target's incoming relations
-    const targetRelationIndex = targetConnections.incoming.findIndex(
+    const targetRelationIndex = targetAllRelations.findIndex(
       (r) => r.id === relation.id
     );
-    const targetRelationCount = targetConnections.incoming.length;
+    const targetRelationCount = targetAllRelations.length;
 
-    // Calculate horizontal offset for source (outgoing arrows)
+    // Calculate horizontal offset based on ALL relations (not just incoming/outgoing)
     const sourceOffset =
       sourceRelationCount > 1
         ? (sourceRelationIndex / (sourceRelationCount - 1) - 0.5) *
           (sourcePos.width * 0.8)
         : 0;
 
-    // Calculate horizontal offset for target (incoming arrows)
     const targetOffset =
       targetRelationCount > 1
         ? (targetRelationIndex / (targetRelationCount - 1) - 0.5) *
           (targetPos.width * 0.8)
         : 0;
 
-    // Apply offsets to connection points, accounting for entity layers
+    // Rest of the rendering logic remains the same...
     const sourceYOffset = sourcePos.layerIndex * entityLayerSpacing;
     const targetYOffset = targetPos.layerIndex * entityLayerSpacing;
 
@@ -536,41 +618,52 @@ const AnnotationViewer = () => {
       // Same line - check if they're overlapping (different layers)
       if (sourcePos.layerIndex !== targetPos.layerIndex) {
         // OVERLAPPING ENTITIES - Use tight side arc
-        const layerDifference = Math.abs(sourcePos.layerIndex - targetPos.layerIndex);
-        
+        const layerDifference = Math.abs(
+          sourcePos.layerIndex - targetPos.layerIndex
+        );
+
         // Determine which side to draw the arc on based on horizontal positions
         const sourceLeftOfTarget = sourceCenter.x < targetCenter.x;
         const useLeftSide = sourceLeftOfTarget;
-        
+
         // Calculate a small arc offset - much tighter
         const baseArcWidth = 15;
-        const arcWidth = baseArcWidth + (layerDifference * 5) + (index * 3);
-        
+        const arcWidth = baseArcWidth + layerDifference * 5 + index * 3;
+
         // Calculate connection points from the sides of entity boxes
         const sourceYOffset = sourcePos.layerIndex * entityLayerSpacing;
         const targetYOffset = targetPos.layerIndex * entityLayerSpacing;
-        
-        const sourceBoxY = sourcePos.y + lineHeight + 4 + sourceYOffset + entityBoxHeight / 2;
-        const targetBoxY = targetPos.y + lineHeight + 4 + targetYOffset + entityBoxHeight / 2;
-        
+
+        const sourceBoxY =
+          sourcePos.y + lineHeight + 4 + sourceYOffset + entityBoxHeight / 2;
+        const targetBoxY =
+          targetPos.y + lineHeight + 4 + targetYOffset + entityBoxHeight / 2;
+
         // Connect from sides of entity boxes
-        const sourceConnectX = useLeftSide ? sourcePos.x : sourcePos.x + sourcePos.width;
-        const targetConnectX = useLeftSide ? targetPos.x : targetPos.x + targetPos.width;
-        
+        const sourceConnectX = useLeftSide
+          ? sourcePos.x
+          : sourcePos.x + sourcePos.width;
+        const targetConnectX = useLeftSide
+          ? targetPos.x
+          : targetPos.x + targetPos.width;
+
         // Calculate the side X position for the arc
         const leftmostX = Math.min(sourcePos.x, targetPos.x);
-        const rightmostX = Math.max(sourcePos.x + sourcePos.width, targetPos.x + targetPos.width);
-        
-        const sideX = useLeftSide ? 
-          leftmostX - arcWidth :
-          rightmostX + arcWidth;
-        
+        const rightmostX = Math.max(
+          sourcePos.x + sourcePos.width,
+          targetPos.x + targetPos.width
+        );
+
+        const sideX = useLeftSide
+          ? leftmostX - arcWidth
+          : rightmostX + arcWidth;
+
         // Create the side arc path - from side of source box to side of target box
         const pathData = `M ${sourceConnectX} ${sourceBoxY} 
                          L ${sideX} ${sourceBoxY} 
                          L ${sideX} ${targetBoxY} 
                          L ${targetConnectX} ${targetBoxY}`;
-        
+
         // Position label on the vertical section
         labelX = sideX + (useLeftSide ? -12 : 12);
         labelY = (sourceBoxY + targetBoxY) / 2;
@@ -604,7 +697,9 @@ const AnnotationViewer = () => {
               fontSize="10"
               fill={relation.color}
               fontWeight="bold"
-              transform={`rotate(${useLeftSide ? -90 : 90} ${labelX} ${labelY})`}
+              transform={`rotate(${
+                useLeftSide ? -90 : 90
+              } ${labelX} ${labelY})`}
             >
               {relation.type}
             </text>
@@ -662,33 +757,38 @@ const AnnotationViewer = () => {
       // Different lines - create two separate path segments, accounting for entity layer heights
       const sourceLayerInfo = entityLayers[sourcePos.lineIndex];
       const targetLayerInfo = entityLayers[targetPos.lineIndex];
-      const sourceLineEntityHeight = sourceLayerInfo ? sourceLayerInfo.layers.length * entityLayerSpacing : 0;
-      const targetLineEntityHeight = targetLayerInfo ? targetLayerInfo.layers.length * entityLayerSpacing : 0;
-      
-      const crossLineOffset = index * 15 + Math.max(sourceLineEntityHeight, targetLineEntityHeight);
+      const sourceLineEntityHeight = sourceLayerInfo
+        ? sourceLayerInfo.layers.length * entityLayerSpacing
+        : 0;
+      const targetLineEntityHeight = targetLayerInfo
+        ? targetLayerInfo.layers.length * entityLayerSpacing
+        : 0;
+
+      const crossLineOffset =
+        index * 15 + Math.max(sourceLineEntityHeight, targetLineEntityHeight);
       const rightEdge = containerWidth - padding;
       const leftEdge = padding;
-      
+
       const isDownward = sourcePos.lineIndex < targetPos.lineIndex;
-      
+
       let sourcePath, targetPath, sourceExitY, targetEntryY;
-      
+
       if (isDownward) {
         sourceExitY = sourceCenter.y + 20 + crossLineOffset;
         targetEntryY = targetCenter.y + 20 + crossLineOffset;
-        
+
         sourcePath = `M ${sourceCenter.x} ${sourceCenter.y} L ${sourceCenter.x} ${sourceExitY} L ${rightEdge} ${sourceExitY}`;
         targetPath = `M ${leftEdge} ${targetEntryY} L ${targetCenter.x} ${targetEntryY} L ${targetCenter.x} ${targetCenter.y}`;
-        
+
         labelX = (sourceCenter.x + rightEdge) / 2;
         labelY = sourceExitY - 5;
       } else {
         sourceExitY = sourceCenter.y + 20 + crossLineOffset;
         targetEntryY = targetCenter.y + 20 + crossLineOffset;
-        
+
         sourcePath = `M ${sourceCenter.x} ${sourceCenter.y} L ${sourceCenter.x} ${sourceExitY} L ${leftEdge} ${sourceExitY}`;
         targetPath = `M ${rightEdge} ${targetEntryY} L ${targetCenter.x} ${targetEntryY} L ${targetCenter.x} ${targetCenter.y}`;
-        
+
         labelX = (sourceCenter.x + leftEdge) / 2;
         labelY = sourceExitY - 5;
       }
@@ -730,7 +830,9 @@ const AnnotationViewer = () => {
               <polygon
                 points={`${rightEdge - 5},${
                   sourceExitY - 3
-                } ${rightEdge},${sourceExitY} ${rightEdge - 5},${sourceExitY + 3}`}
+                } ${rightEdge},${sourceExitY} ${rightEdge - 5},${
+                  sourceExitY + 3
+                }`}
                 fill={relation.color}
               />
               <polygon
@@ -745,7 +847,9 @@ const AnnotationViewer = () => {
               <polygon
                 points={`${leftEdge + 5},${
                   sourceExitY - 3
-                } ${leftEdge},${sourceExitY} ${leftEdge + 5},${sourceExitY + 3}`}
+                } ${leftEdge},${sourceExitY} ${leftEdge + 5},${
+                  sourceExitY + 3
+                }`}
                 fill={relation.color}
               />
               <polygon
@@ -776,7 +880,7 @@ const AnnotationViewer = () => {
     <div className="annotation-viewer">
       <div className="mb-4">
         <h3 className="text-lg font-bold mb-2">
-          Enhanced Annotation Viewer - With Overlapping Entity Relations
+          Enhanced Annotation Viewer - With Ellipsis Labels and Hover Tooltips
         </h3>
 
         {/* Width control */}
@@ -789,19 +893,34 @@ const AnnotationViewer = () => {
             value={containerWidth}
             onChange={(e) => setContainerWidth(parseInt(e.target.value))}
             className="flex-1"
-            title={`Minimum width: ${minRequiredWidth}px (required for longest entity: "${entities.reduce((longest, entity) => entity.text.length > longest.text.length ? entity : longest).text}")`}
+            title={`Minimum width: ${minRequiredWidth}px`}
           />
           <span className="text-sm font-mono w-16">{containerWidth}px</span>
         </div>
-        
+
+        {/* Ellipsis feature info */}
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600">💡</span>
+            <div>
+              <strong>Smart Label Display:</strong> Long entity labels are
+              automatically truncated with ellipsis (...) to fit within their
+              text spans. Hover over any truncated label to see the full text in
+              a tooltip. This keeps the layout clean and compact while
+              preserving all information.
+            </div>
+          </div>
+        </div>
+
         {/* Width constraint info */}
         {containerWidth <= minRequiredWidth + 10 && (
           <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm">
             <div className="flex items-start gap-2">
               <span className="text-amber-600">⚠️</span>
               <div>
-                <strong>Minimum width constraint:</strong> Container cannot be smaller than {minRequiredWidth}px 
-                to prevent the entity "{entities.reduce((longest, entity) => entity.text.length > longest.text.length ? entity : longest).text}" from breaking across lines.
+                <strong>Minimum width constraint:</strong> Container cannot be
+                smaller than {minRequiredWidth}px to prevent entities from
+                breaking across lines.
               </div>
             </div>
           </div>
@@ -850,20 +969,38 @@ const AnnotationViewer = () => {
           <div>
             <h5 className="font-medium mb-1">Entities:</h5>
             <ul className="space-y-1">
-              {entities.map((entity) => (
-                <li key={entity.id} className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded border"
-                    style={{
-                      backgroundColor: entity.color + "80",
-                      borderColor: entity.color,
-                    }}
-                  ></div>
-                  <span className="text-xs">
-                    {entity.text} → {entity.type} ({entity.start}-{entity.end})
-                  </span>
-                </li>
-              ))}
+              {entities.map((entity) => {
+                const pos = entityPositions[entity.id];
+                const availableWidth = pos ? pos.width - 8 : 0;
+                const truncatedLabel = truncateLabel(
+                  entity.type,
+                  availableWidth
+                );
+                const isTruncated = truncatedLabel !== entity.type;
+
+                return (
+                  <li key={entity.id} className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded border"
+                      style={{
+                        backgroundColor: entity.color + "80",
+                        borderColor: entity.color,
+                      }}
+                    ></div>
+                    <span
+                      className="text-xs"
+                      title={isTruncated ? entity.type : undefined}
+                    >
+                      {entity.text} →{" "}
+                      {isTruncated ? truncatedLabel : entity.type} (
+                      {entity.start}-{entity.end})
+                      {isTruncated && (
+                        <span className="text-blue-600 ml-1">...</span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
           <div>
@@ -887,76 +1024,14 @@ const AnnotationViewer = () => {
             </ul>
           </div>
         </div>
-      </div>
 
-      {/* Debug Information */}
-      <div className="mt-4 p-4 bg-blue-50 rounded">
-        <h4 className="font-semibold mb-2">Debug Information:</h4>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
-          {/* Line Information */}
-          <div>
-            <h5 className="font-medium mb-2">Line Heights & Entity Layers:</h5>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {lineInfo.lines.map((line, index) => {
-                const layerInfo = entityLayers[index];
-                return (
-                  <div
-                    key={index}
-                    className="p-2 bg-white rounded border text-xs"
-                  >
-                    <div>
-                      <strong>Line {index}:</strong> Y={line.y}px, Spacing=
-                      {line.spacing}px
-                    </div>
-                    <div>
-                      Entity Layers: {layerInfo.layers.length}, Relations: {line.relationCount}
-                    </div>
-                    {layerInfo.layers.map((layer, layerIdx) => (
-                      <div key={layerIdx} className="ml-2 text-gray-600">
-                        Layer {layerIdx}: {layer.map(item => entities.find(e => e.id === item.entityId)?.type || item.entityId).join(', ')}
-                      </div>
-                    ))}
-                    <div className="text-gray-600 truncate">
-                      Text: "{line.chunks.map((c) => c.text).join(" ")}"
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Entity Positions */}
-          <div>
-            <h5 className="font-medium mb-2">Entity Positions:</h5>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {entities.map((entity) => {
-                const pos = entityPositions[entity.id];
-                const lineNum = lineInfo.entityLineMapping[entity.id];
-                const connections = entityConnections[entity.id];
-                return (
-                  <div
-                    key={entity.id}
-                    className="p-2 bg-white rounded border text-xs"
-                  >
-                    <div>
-                      <strong>{entity.id}</strong> ({entity.type}): "
-                      {entity.text}"
-                    </div>
-                    <div>
-                      Position: x={pos?.x}px, y={pos?.y}px, width={pos?.width}px
-                    </div>
-                    <div>
-                      Character span: {entity.start}-{entity.end}, Line: {lineNum}, Layer: {pos?.layerIndex}
-                    </div>
-                    <div>
-                      Connections: {connections.outgoing.length} outgoing,{" "}
-                      {connections.incoming.length} incoming
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <div className="mt-3 p-2 bg-white rounded border text-xs">
+          <strong>Interaction Tips:</strong>
+          <ul className="mt-1 space-y-1">
+            <li>• Hover over truncated labels (...) to see the full text</li>
+            <li>• Entity boxes fit exactly within their text spans</li>
+            <li>• Multiple layers automatically prevent overlaps</li>
+          </ul>
         </div>
       </div>
     </div>
